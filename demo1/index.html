@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="https://bundle.run/noble-secp256k1@1.2.14"></script>
+    <script src="https://bundle.run/browserify-cipher@1.0.1"></script>
+</head>
+<body>
+    <script>
+        // For private events
+        var hexToBytes = hex => Uint8Array.from(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        var bytesToHex = bytes => bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
+        var { getSharedSecret, schnorr, utils } = nobleSecp256k1;
+        var sha256 = nobleSecp256k1.utils.sha256;
+
+        // Generate random private/public keys
+        var privKey = bytesToHex(nobleSecp256k1.utils.randomPrivateKey());
+        var pubKey = nobleSecp256k1.getPublicKey(privKey, true);
+
+        pubKey = pubKey.substring(2);
+        console.log(pubKey);
+
+        // Connect to a relay
+        var relay = "wss://cfrelay.royalgarter.workers.dev";
+        var socket = new WebSocket(relay);
+
+        // Listen for messages and check for valid events
+        socket.addEventListener('message', async function(message) {
+            var [type, subId, event] = JSON.parse(message.data);
+            var { kind, content } = event || {}
+
+            if (!event || event === true) return;
+
+            console.log('message:', event);
+
+            if (kind === 4) {
+                content = await decrypt(privKey, event.pubkey, content);
+            }
+
+            console.log('content:', content);
+        });
+
+        socket.addEventListener('open', async function(e) {
+            console.log("connected to " + relay);
+
+            // Create a subscription
+            var subId = bytesToHex(nobleSecp256k1.utils.randomPrivateKey()).substring(0, 16);
+            var filter = { "authors": [pubKey] }
+         	 
+            var subscription = ["REQ", subId, filter]
+            console.log('Subscription:', subscription);
+
+            socket.send(JSON.stringify(subscription));
+
+            // example public event
+            var event = {
+                "content": "this workshop is awesome!",         // Event content
+                "created_at": Math.floor(Date.now() / 1000),    // Unix timestamp (Nostr wants it in secs not ms)
+                "kind": 1,                                      // Message type (1 is plaintext)
+                "tags": [],                                     // Tags for identifying replies/recipients
+                "pubkey": pubKey,                               // Signed w/ public key
+            }
+
+            var signedEvent = await getSignedEvent(event, privKey);
+            console.log('signedEvent:', signedEvent);
+            socket.send(JSON.stringify(["EVENT", signedEvent]));
+
+            // example private event
+            var message = "this message is super secret!"
+            var event2 = {
+                "content": encrypt(privKey, pubKey, message),   // Event content (encrypted)
+                "created_at": Math.floor(Date.now() / 1000),    // Unix timestamp
+                "kind": 4,                                      // Type is encrypted text message
+                "tags": [['p', pubKey]],                        // Send to specific person (ourselves)
+                "pubkey": pubKey,                               // Signed w/ public key
+            }
+
+            var signedEvent2 = await getSignedEvent(event2, privKey);
+            console.log('signedEvent2:', signedEvent2);
+            socket.send(JSON.stringify(["EVENT", signedEvent2]));
+        });
+
+        
+        async function getSignedEvent(event, privateKey) {
+            var eventData = JSON.stringify([
+                0,                    // Reserved for future use
+                event['pubkey'],      // The sender's public key
+                event['created_at'],  // Unix timestamp
+                event['kind'],        // Message “kind” or type
+                event['tags'],        // Tags identify replies/recipients
+                event['content']      // Your note contents
+            ]);
+            event.id = bytesToHex(await sha256((new TextEncoder().encode(eventData))));
+            event.sig = await schnorr.sign(event.id, privateKey);
+            return event;
+        }
+
+        function base64ToHex(str) {
+            let raw = atob(str);
+            let result = '';
+
+            for (let i = 0; i < raw.length; i++) {
+                let hex = raw.charCodeAt(i).toString(16);
+                result += (hex.length === 2 ? hex : '0' + hex);
+            }
+
+            return result;
+        }
+
+        function encrypt(privkey, pubkey, text) {
+            let key = nobleSecp256k1.getSharedSecret(privkey, '02' + pubkey, true).substring(2);
+            let iv = window.crypto.getRandomValues(new Uint8Array(16));
+            let cipher = browserifyCipher.createCipheriv('aes-256-cbc', hexToBytes(key), iv);
+            let encryptedMessage = cipher.update(text, "utf8", "base64");
+            let emsg = encryptedMessage + cipher.final("base64");
+            let uint8View = new Uint8Array(iv.buffer);
+            let decoder = new TextDecoder();
+
+            return emsg + "?iv=" + btoa(String.fromCharCode.apply(null, uint8View));
+        }
+        
+        function decrypt(privkey, pubkey, ciphertext) {
+            let [emsg, iv] = ciphertext.split("?iv=");
+            let key = nobleSecp256k1.getSharedSecret(privkey, '02' + pubkey, true).substring(2);
+            let decipher = browserifyCipher.createDecipheriv(
+                'aes-256-cbc',
+                hexToBytes(key),
+                hexToBytes(base64ToHex(iv))
+            );
+            let decryptedMessage = decipher.update(emsg, "base64");
+
+            return decryptedMessage + decipher.final("utf8");
+        }
+    </script>
+</body>
+</html>

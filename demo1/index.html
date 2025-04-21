@@ -25,22 +25,6 @@
         var relay = "wss://relay.damus.io";
         var socket = new WebSocket(relay);
 
-        // Listen for messages and check for valid events
-        socket.addEventListener('message', async function(message) {
-            var [type, subId, event] = JSON.parse(message.data);
-            var { kind, content } = event || {}
-
-            if (!event || event === true) return;
-
-            console.log('Nostr message:', event);
-
-            if (kind === 4) {
-                content = await decrypt(privKey, event.pubkey, content);
-            }
-
-            console.log('OUTPUT:', content);
-        });
-
         // Open connection to relay
         socket.addEventListener('open', async function(e) {
             console.log("CONNECTED:", relay);
@@ -64,7 +48,6 @@
             }
 
             var publicEvent = await getSignedEvent(publicContent, privKey);
-            // console.log('Public event:', publicEvent);
             socket.send(JSON.stringify(["EVENT", publicEvent]));
 
             // example private event
@@ -78,8 +61,24 @@
             }
 
             var privateEvent = await getSignedEvent(privateContent, privKey);
-            // console.log('Private event:', privateEvent);
             socket.send(JSON.stringify(["EVENT", privateEvent]));
+        });
+
+        // Listen for messages and check for valid events
+        socket.addEventListener('message', async function(message) {
+            var [type, subId, event] = JSON.parse(message.data);
+            var { kind, content } = event || {}
+
+            if (!event || event === true) return;
+
+            console.log('Nostr message:', event);
+
+            // Decrypt raw content if it's of encrypted type
+            if (kind === 4) {
+                content = await decrypt(privKey, event.pubkey, content);
+            }
+
+            console.log('OUTPUT:', content);
         });
 
 

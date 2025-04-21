@@ -20,8 +20,9 @@
         pubKey = pubKey.substring(2);
         console.log("Generated public key:", pubKey);
 
-        // Connect to a relay
-        var relay = "wss://cfrelay.royalgarter.workers.dev";
+        // Set relay
+        // var relay = "wss://cfrelay.royalgarter.workers.dev"; // For some reason, this relay doesn't output data correctly... why not? look into this
+        var relay = "wss://relay.damus.io";
         var socket = new WebSocket(relay);
 
         // Listen for messages and check for valid events
@@ -31,15 +32,16 @@
 
             if (!event || event === true) return;
 
-            console.log('message:', event);
+            console.log('Nostr message:', event);
 
             if (kind === 4) {
                 content = await decrypt(privKey, event.pubkey, content);
             }
 
-            console.log('content:', content);
+            console.log('OUTPUT:', content);
         });
 
+        // Open connection to relay
         socket.addEventListener('open', async function(e) {
             console.log("CONNECTED:", relay);
 
@@ -62,7 +64,7 @@
             }
 
             var publicEvent = await getSignedEvent(publicContent, privKey);
-            console.log('Public event:', publicEvent);
+            // console.log('Public event:', publicEvent);
             socket.send(JSON.stringify(["EVENT", publicEvent]));
 
             // example private event
@@ -76,7 +78,7 @@
             }
 
             var privateEvent = await getSignedEvent(privateContent, privKey);
-            console.log('Private event:', privateEvent);
+            // console.log('Private event:', privateEvent);
             socket.send(JSON.stringify(["EVENT", privateEvent]));
         });
 
@@ -96,11 +98,11 @@
         }
 
         function base64ToHex(str) {
-            let raw = atob(str);
-            let result = '';
+            var raw = atob(str);
+            var result = '';
 
-            for (let i = 0; i < raw.length; i++) {
-                let hex = raw.charCodeAt(i).toString(16);
+            for (var i = 0; i < raw.length; i++) {
+                var hex = raw.charCodeAt(i).toString(16);
                 result += (hex.length === 2 ? hex : '0' + hex);
             }
 
@@ -108,26 +110,26 @@
         }
 
         function encrypt(privkey, pubkey, text) {
-            let key = nobleSecp256k1.getSharedSecret(privkey, '02' + pubkey, true).substring(2);
-            let iv = window.crypto.getRandomValues(new Uint8Array(16));
-            let cipher = browserifyCipher.createCipheriv('aes-256-cbc', hexToBytes(key), iv);
-            let encryptedMessage = cipher.update(text, "utf8", "base64");
-            let emsg = encryptedMessage + cipher.final("base64");
-            let uint8View = new Uint8Array(iv.buffer);
-            let decoder = new TextDecoder();
+            var key = nobleSecp256k1.getSharedSecret(privkey, '02' + pubkey, true).substring(2);
+            var iv = window.crypto.getRandomValues(new Uint8Array(16));
+            var cipher = browserifyCipher.createCipheriv('aes-256-cbc', hexToBytes(key), iv);
+            var encryptedMessage = cipher.update(text, "utf8", "base64");
+            var emsg = encryptedMessage + cipher.final("base64");
+            var uint8View = new Uint8Array(iv.buffer);
+            var decoder = new TextDecoder();
 
             return emsg + "?iv=" + btoa(String.fromCharCode.apply(null, uint8View));
         }
         
         function decrypt(privkey, pubkey, ciphertext) {
-            let [emsg, iv] = ciphertext.split("?iv=");
-            let key = nobleSecp256k1.getSharedSecret(privkey, '02' + pubkey, true).substring(2);
-            let decipher = browserifyCipher.createDecipheriv(
+            var [emsg, iv] = ciphertext.split("?iv=");
+            var key = nobleSecp256k1.getSharedSecret(privkey, '02' + pubkey, true).substring(2);
+            var decipher = browserifyCipher.createDecipheriv(
                 'aes-256-cbc',
                 hexToBytes(key),
                 hexToBytes(base64ToHex(iv))
             );
-            let decryptedMessage = decipher.update(emsg, "base64");
+            var decryptedMessage = decipher.update(emsg, "base64");
 
             return decryptedMessage + decipher.final("utf8");
         }

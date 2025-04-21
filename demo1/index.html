@@ -18,7 +18,7 @@
         var pubKey = nobleSecp256k1.getPublicKey(privKey, true);
 
         pubKey = pubKey.substring(2);
-        console.log(pubKey);
+        console.log("Generated public key:", pubKey);
 
         // Connect to a relay
         var relay = "wss://cfrelay.royalgarter.workers.dev";
@@ -41,7 +41,7 @@
         });
 
         socket.addEventListener('open', async function(e) {
-            console.log("connected to " + relay);
+            console.log("CONNECTED:", relay);
 
             // Create a subscription
             var subId = bytesToHex(nobleSecp256k1.utils.randomPrivateKey()).substring(0, 16);
@@ -53,42 +53,42 @@
             socket.send(JSON.stringify(subscription));
 
             // example public event
-            var event = {
+            var publicContent = {
                 "content": "this is a public message",          // Event content
                 "created_at": Math.floor(Date.now() / 1000),    // Unix timestamp (Nostr wants it in secs not ms)
                 "kind": 1,                                      // Message type (1 is plaintext)
                 "tags": [],                                     // Tags for identifying replies/recipients
-                "pubkey": pubKey,                               // Signed w/ public key
+                "pubkey": pubKey,                               // Signed w/ our public key
             }
 
-            var signedEvent = await getSignedEvent(event, privKey);
-            console.log('signedEvent:', signedEvent);
-            socket.send(JSON.stringify(["EVENT", signedEvent]));
+            var publicEvent = await getSignedEvent(publicContent, privKey);
+            console.log('Public event:', publicEvent);
+            socket.send(JSON.stringify(["EVENT", publicEvent]));
 
             // example private event
-            var message = "this is a secret message"
-            var event2 = {
+            var message = "this is a private message"
+            var privateContent = {
                 "content": encrypt(privKey, pubKey, message),   // Event content (encrypted)
                 "created_at": Math.floor(Date.now() / 1000),    // Unix timestamp
                 "kind": 4,                                      // Type is encrypted text message
                 "tags": [['p', pubKey]],                        // Send to specific person (ourselves)
-                "pubkey": pubKey,                               // Signed w/ public key
+                "pubkey": pubKey,                               // Signed w/ our public key
             }
 
-            var signedEvent2 = await getSignedEvent(event2, privKey);
-            console.log('signedEvent2:', signedEvent2);
-            socket.send(JSON.stringify(["EVENT", signedEvent2]));
+            var privateEvent = await getSignedEvent(privateContent, privKey);
+            console.log('Private event:', privateEvent);
+            socket.send(JSON.stringify(["EVENT", privateEvent]));
         });
 
-        
+
         async function getSignedEvent(event, privateKey) {
             var eventData = JSON.stringify([
                 0,                    // Reserved for future use
                 event['pubkey'],      // The sender's public key
                 event['created_at'],  // Unix timestamp
-                event['kind'],        // Message “kind” or type
+                event['kind'],        // Message type
                 event['tags'],        // Tags identify replies/recipients
-                event['content']      // Your note contents
+                event['content']      // Our note contents
             ]);
             event.id = bytesToHex(await sha256((new TextEncoder().encode(eventData))));
             event.sig = await schnorr.sign(event.id, privateKey);

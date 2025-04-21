@@ -54,7 +54,7 @@
 
             // example public event
             var event = {
-                "content": "this workshop is awesome!",         // Event content
+                "content": "this is a public message",          // Event content
                 "created_at": Math.floor(Date.now() / 1000),    // Unix timestamp (Nostr wants it in secs not ms)
                 "kind": 1,                                      // Message type (1 is plaintext)
                 "tags": [],                                     // Tags for identifying replies/recipients
@@ -66,7 +66,7 @@
             socket.send(JSON.stringify(["EVENT", signedEvent]));
 
             // example private event
-            var message = "this message is super secret!"
+            var message = "this is a secret message"
             var event2 = {
                 "content": encrypt(privKey, pubKey, message),   // Event content (encrypted)
                 "created_at": Math.floor(Date.now() / 1000),    // Unix timestamp
